@@ -76,7 +76,21 @@ print()
 # evaluation
 print('+ EVALUATION')
 test_loss, test_acc = model.evaluate(testX, testy)
-print('test_acc: ',test_acc)
+print('(*) test_acc: ',test_acc)
+print()
+
+preds = model.predict(testX)
+predy = np.argmax(preds, axis=1)
+
+print('(*)precision scores :')
+ps =  metrics.precision_score(testy, predy, average=None)
+for i, label in enumerate(classes):
+    print(label,'\t',ps[i])
+print()
+
+roc = metrics.roc_auc_score(testy, preds, multi_class='ovr')
+print('(*) roc score :', roc)
+print()
 
 # save model
 with open(MODEL_JSON_FILE, 'w') as f:

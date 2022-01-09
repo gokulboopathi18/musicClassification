@@ -3,17 +3,19 @@ import numpy as np
 import os
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
+import sklearn.metrics as metrics
+from matplotlib import pyplot as plt
 
 from keras import models
 from keras import layers
 
 DATA_FOLDER = 'data'
-FEATURES_FILE = os.path.join(DATA_FOLDER, 'test.csv')
-TEST_FEATURES_FILE = os.path.join(DATA_FOLDER, 'features.csv')
+FEATURES_FILE = os.path.join(DATA_FOLDER, 'features.csv')
+MODEL_JSON_FILE = 'model.json'
+MODEL_WEIGHTS_FILE = 'weights.h5'
 
 # read all the data from the features file
 df = pd.read_csv(FEATURES_FILE)
-df = df.iloc[:, 1:]
 print('+ DATASET')
 print(df.sample(5, random_state=10))
 print()
@@ -49,6 +51,7 @@ print()
 model = models.Sequential()
 print(X.shape)
 model.add(layers.Dense(512,activation='relu',input_shape=(X.shape[1],)))
+model.add(layers.Dense(512,activation='relu'))
 model.add(layers.Dense(256,activation='relu'))
 model.add(layers.Dense(128,activation='relu'))
 model.add(layers.Dense(64,activation='relu'))
@@ -59,7 +62,15 @@ model.compile(optimizer='adam',
               metrics=['accuracy'])
 
 # train model
-training_history = model.fit(X, y, epochs = 200, batch_size=512)
+training_history = model.fit(X, y, epochs = 200, batch_size=512).history
+print(training_history.keys())
+plt.plot(training_history['accuracy'])
+plt.plot(training_history['loss'])
+plt.title('model accuracy')
+plt.ylabel('accuracy')
+plt.xlabel('epoch')
+plt.legend(['accuracy', 'loss'], loc='upper left')
+plt.savefig('training.png')
 print()
 
 # evaluation
@@ -68,4 +79,7 @@ test_loss, test_acc = model.evaluate(testX, testy)
 print('test_acc: ',test_acc)
 
 # save model
-
+with open(MODEL_JSON_FILE, 'w') as f:
+    f.write(model.to_json())
+model.save_weights(MODEL_WEIGHTS_FILE)
+print('+ MODEL SAVED')

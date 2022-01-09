@@ -1,10 +1,9 @@
 import os
 import librosa
-from librosa.feature.spectral import spectral_centroid
+from numba.cuda.simulator.kernelapi import FakeCUDALocal
 import pandas as pd
 import os
 import time
-import sklearn
 import matplotlib.pyplot as plt
 import sys
 import numpy as np
@@ -13,19 +12,15 @@ DATA_FOLDER = 'data'
 DATASET = 'genres'
 FEATURES_FILE = os.path.join(DATA_FOLDER, 'features.csv')
 
-# csv headers
-header = 'filename' 
+# csv header
+HEADER = 'filename' 
 for i in range(12):
-    header += ' stft'+str(i+1)
-header += ' spectral_centroid spectral_bandwidth rolloff zero_crossing_rate'
+    HEADER += ' stft'+str(i+1)
+HEADER += ' spectral_centroid spectral_bandwidth rolloff zero_crossing_rate'
 for i in range(1,21):
-	header += ' mfcc'+str(i)
-header += ' label'
-header =  header.split()
-
-# create a pandas dataframe for the feature values
-df = pd.DataFrame(columns=header)
-print(df.columns)
+	HEADER += ' mfcc' + str(i)
+HEADER += ' label'
+HEADER =  HEADER.split()
 
 def printSample(song_name, y, sr, stft, cent, bw, ro, zcr, mfc, g):
     sout = sys.stdout
@@ -34,7 +29,8 @@ def printSample(song_name, y, sr, stft, cent, bw, ro, zcr, mfc, g):
         sys.stdout = f
 
         print('SAMPLE AUDIO CLIP FEATURES')
-        print('-'*100)
+        print(song_name, g)
+        print('-' * 100)
 
         print('+ Waveform {shape} :'.format(shape = y.shape), y, end='\n\n')
         print('+ Sampling rate :', sr, end='\n\n')
@@ -57,20 +53,60 @@ def printSample(song_name, y, sr, stft, cent, bw, ro, zcr, mfc, g):
         plt.ylabel('amplitude')
         plt.savefig('sample_audio_clip.png')
 
-        print('-'*100)
-
+        print('-' * 100)
         sys.stdout = sout
 
-start = time.time()
-def extractFeatures():
-    global df
+def extract(filepath, genre, df):
+    global HEADER
 
-    isSample = True
-    sample = dict()
+    if df.empty:
+        df = pd.DataFrame(columns=HEADER)
+        print(df.columns)
+
+    # sample the clip at a certain sample rate
+    y, sr = librosa.load(filepath, mono=True, duration=30)
+    '''
+        Here, y represents the aplitude of the waveform. The atmospheric variations
+        around the microphone, with respect to time
+    '''
+
+    stft = librosa.feature.chroma_stft(y, sr)
+    stft_mean = np.mean(stft, axis = 1) # mean for each bin
+
+    cent = librosa.feature.spectral_centroid(y, sr)
+    cent_mean = np.mean(cent)
+
+    bw = librosa.feature.spectral_bandwidth(y, sr)
+    bw_mean = np.mean(bw)
+    
+    ro = librosa.feature.spectral_rolloff(y, sr)
+    ro_mean = np.mean(ro)
+
+    zcr = librosa.feature.zero_crossing_rate(y, sr)
+    zcr_mean = np.mean(zcr)
+
+    mfc = librosa.feature.mfcc(y, sr)
+    mfc_mean = np.mean(mfc, axis=1)
+
+    # append to csv
+    feature_list = [filepath] + stft_mean.tolist() + [cent_mean, bw_mean, ro_mean, zcr_mean] + mfc_mean.tolist() + [genre]
+    feature_list = pd.Series(feature_list, index = df.columns)
+    df = df.append(feature_list, ignore_index=True)         
+
+    return df, [filepath, y, sr, stft, cent, bw, ro, zcr, mfc, genre]
+
+def extractFeatures():
+    start = time.time()
+
+    # empty dataframe
+    df = pd.DataFrame()
+
+    sample = True
 
     # extract features for audio clips in each genre
     genres = "blues classical country disco hiphop jazz metal pop reggae rock".split()
     # genres = "blues".split()
+    
     for i, g in enumerate(genres):
         print('\nextracting features for {genre}({ind})'.format(genre = g, ind = i))
         
@@ -78,45 +114,17 @@ def extractFeatures():
         clips = os.listdir(fp)  # get all audio files from genre
         print('{count} clips'.format(count = len(clips)))
 
-        # extract features for each clips
+        # extract features for each clip
         for j, clip in enumerate(clips):
             song_name = os.path.join(fp, clip)
             print("\t {song}({ind})".format(song = song_name, ind = j))
+
             try:
-                # sample the clip at a certain sample rate
-                y, sr = librosa.load(song_name, mono=True, duration=30)
-                '''
-                    Here, y represents the aplitude of the waveform. The atmospheric variations
-                    around the microphone, with respect to time
-                '''
-
-                stft = librosa.feature.chroma_stft(y, sr)
-                stft_mean = np.mean(stft, axis = 1) # mean for each bin
-
-                cent = librosa.feature.spectral_centroid(y, sr)
-                cent_mean = np.mean(cent)
-
-                bw = librosa.feature.spectral_bandwidth(y, sr)
-                bw_mean = np.mean(bw)
+                df, _ = extract(song_name, g, df)
                 
-                ro = librosa.feature.spectral_rolloff(y, sr)
-                ro_mean = np.mean(ro)
-
-                zcr = librosa.feature.zero_crossing_rate(y, sr)
-                zcr_mean = np.mean(zcr)
-
-                mfc = librosa.feature.mfcc(y, sr)
-                mfc_mean = np.mean(mfc, axis=1)
-
-                # append to csv
-                feature_list = [song_name] + stft_mean.tolist() + [cent_mean, bw_mean, ro_mean, zcr_mean] + mfc_mean.tolist() + [g]
-                feature_list = pd.Series(feature_list, index = df.columns)
-                df = df.append(feature_list, ignore_index=True)           
-
-                # get a sample for later use
-                if isSample:
-                    isSample = False
-                    printSample(song_name, y, sr, stft, cent, bw, ro, zcr, mfc, g)
+                if sample == True:
+                    sample = False
+                    printSample(*_)
 
             except Exception as e:
                 print(e)
@@ -128,11 +136,12 @@ def extractFeatures():
         print()
     
     # feature extraction complete
-
+    print('that took {t}s'.format(t = time.time() - start))
+    return df
 
 # extract features and store
 try:
-    extractFeatures()
+    df = extractFeatures()
     print(df)
     df.to_csv(FEATURES_FILE, index=False) 
 

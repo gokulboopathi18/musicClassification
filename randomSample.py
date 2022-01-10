@@ -33,7 +33,7 @@ df.iloc[:, -1:] = encoder.fit_transform(df.iloc[:, -1:])
 print(df.sample(5, random_state=10))
 print()
 
-
+# 500 items in random
 df = df.sample(500)
 
 X = df.iloc[:,1:-1]

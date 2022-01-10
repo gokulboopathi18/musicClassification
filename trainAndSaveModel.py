@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import time
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 import sklearn.metrics as metrics
@@ -51,7 +52,6 @@ print()
 model = models.Sequential()
 print(X.shape)
 model.add(layers.Dense(512,activation='relu',input_shape=(X.shape[1],)))
-model.add(layers.Dense(512,activation='relu'))
 model.add(layers.Dense(256,activation='relu'))
 model.add(layers.Dense(128,activation='relu'))
 model.add(layers.Dense(64,activation='relu'))
@@ -62,8 +62,9 @@ model.compile(optimizer='adam',
               metrics=['accuracy'])
 
 # train model
-training_history = model.fit(X, y, epochs = 200, batch_size=512).history
-print(training_history.keys())
+start = time.time()
+training_history = model.fit(X, y, epochs = 60, batch_size=512).history
+print('training took {t}s:'.format(t = time.time() - start))
 plt.plot(training_history['accuracy'])
 plt.plot(training_history['loss'])
 plt.title('model accuracy')
